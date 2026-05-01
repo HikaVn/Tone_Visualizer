@@ -6,6 +6,7 @@ import { detectFundamentalAutocorrelation, type FundamentalResult } from './audi
 import { estimateRecordingQuality, type RecordingQuality } from './audio/quality';
 import FundamentalResultCard from './components/FundamentalResultCard';
 import HarmonicsBarChart from './components/HarmonicsBarChart';
+import HarmonicsOverlayChart, { datasetColor } from './components/HarmonicsOverlayChart';
 import HarmonicsTable from './components/HarmonicsTable';
 import SpectrumCanvas from './components/SpectrumCanvas';
 import RecordingQualityCard from './components/RecordingQualityCard';
@@ -31,6 +32,8 @@ function App() {
   const [h1Warning, setH1Warning] = useState<string | null>(null);
   const [quality, setQuality] = useState<RecordingQuality | null>(null);
   const [spectrumMaxHz, setSpectrumMaxHz] = useState(10000);
+  const [savedAnalyses, setSavedAnalyses] = useState<Array<{ id: string; label: string; harmonics: HarmonicResult[] }>>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafIdRef = useRef<number | null>(null);
@@ -70,6 +73,9 @@ function App() {
   const runAnalysis = async (blob: Blob) => {
     const arrayBuffer = await blob.arrayBuffer();
     const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextCtor) {
+      throw new Error('AudioContext is not supported in this browser.');
+    }
     const decodeContext = new AudioContextCtor();
     try {
       const audioBuffer = await decodeContext.decodeAudioData(arrayBuffer.slice(0));
@@ -94,10 +100,16 @@ function App() {
     if (audioUrl) { URL.revokeObjectURL(audioUrl); setAudioUrl(null); }
     setSpectrum([]); setFundamental(null); setHarmonics([]); setH1Warning(null); setQuality(null); setSpectrumMaxHz(10000);
     try {
-      setStatus('recording'); setSecondsLeft(RECORD_SECONDS); setMessage('録音中です。A4ロングトーンを維持してください。');
+      setStatus('recording'); setSecondsLeft(RECORD_SECONDS); setMessage('録音中です。単音ロングトーンを維持してください。');
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
       streamRef.current = stream;
       const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextCtor) {
+        setStatus('error');
+        setMessage('AudioContextに対応していないブラウザです。');
+        cleanupAudioGraph();
+        return;
+      }
       const audioContext = new AudioContextCtor(); const analyser = audioContext.createAnalyser(); analyser.fftSize = 2048;
       const source = audioContext.createMediaStreamSource(stream); source.connect(analyser);
       audioContextRef.current = audioContext; sourceRef.current = source; analyserRef.current = analyser;
@@ -145,16 +157,59 @@ function App() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'a4_harmonics.csv';
+    link.download = 'single_note_harmonics.csv';
     link.click();
     URL.revokeObjectURL(url);
   };
+
+  const saveCurrentAnalysis = () => {
+    if (!harmonics.length) return;
+    const id = `${Date.now()}`;
+    const label = new Date().toLocaleString();
+    const next = [{ id, label, harmonics }, ...savedAnalyses].slice(0, 20);
+    setSavedAnalyses(next);
+    setSelectedIds((prev) => [id, ...prev].slice(0, 10));
+  };
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]));
+  };
+
+  const clearSavedAnalyses = () => {
+    setSavedAnalyses([]);
+    setSelectedIds([]);
+  };
+
+  const removeSavedAnalysis = (id: string) => {
+    setSavedAnalyses((prev) => prev.filter((item) => item.id !== id));
+    setSelectedIds((prev) => prev.filter((v) => v !== id));
+  };
+
+  const overlayDatasets = savedAnalyses
+    .filter((a) => selectedIds.includes(a.id))
+    .map((a, index) => ({ ...a, color: datasetColor(index) }));
+
+  useEffect(() => {
+    const raw = window.localStorage.getItem('harmonic_saved_analyses');
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as Array<{ id: string; label: string; harmonics: HarmonicResult[] }>;
+      setSavedAnalyses(parsed);
+    } catch (error) {
+      console.error(error);
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem('harmonic_saved_analyses', JSON.stringify(savedAnalyses));
+  }, [savedAnalyses]);
+
   useEffect(() => () => { cleanupAudioGraph(); if (audioUrl) URL.revokeObjectURL(audioUrl); }, [audioUrl]);
 
   return (
     <main className="app">
       <h1>Violin Harmonic Analyzer</h1>
-      <p className="subtitle">Prototype 1 / Phase 4: 品質評価 + CSVダウンロード</p>
+      <p className="subtitle">Single Note Long Tone</p>
       <button className="record-button" type="button" onClick={startRecording} disabled={status === 'recording'}>{status === 'recording' ? `録音中… ${secondsLeft}s` : '録音開始（5秒）'}</button>
       <p className="message">{message}</p>
       <section className="result-card">
@@ -172,6 +227,27 @@ function App() {
       <RecordingQualityCard quality={quality} />
       {h1Warning ? <p className="warning">{h1Warning}</p> : null}
       <button type="button" className="record-button" onClick={downloadCsv} disabled={harmonics.length !== 20}>CSVダウンロード</button>
+      <button type="button" className="record-button" onClick={saveCurrentAnalysis} disabled={harmonics.length !== 20}>この測定を保存</button>
+      <section className="result-card">
+        <h2>保存データ比較</h2>
+        {savedAnalyses.length > 0 ? (
+          <button type="button" onClick={clearSavedAnalyses}>保存データを全削除</button>
+        ) : null}
+        {savedAnalyses.length === 0 ? <p>保存データはまだありません。</p> : (
+          <div>
+            {savedAnalyses.map((item) => (
+              <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <label style={{ display: 'block', flex: 1 }}>
+                  <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => toggleSelection(item.id)} />
+                  {item.label}
+                </label>
+                <button type="button" onClick={() => removeSavedAnalysis(item.id)}>削除</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+      <HarmonicsOverlayChart datasets={overlayDatasets} />
       <HarmonicsBarChart data={harmonics} />
       <HarmonicsTable data={harmonics} />
     </main>
