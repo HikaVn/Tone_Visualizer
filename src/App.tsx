@@ -39,6 +39,7 @@ function App() {
   const [spectrum, setSpectrum] = useState<SpectrumPoint[]>([]);
   const [fundamental, setFundamental] = useState<FundamentalResult | null>(null);
   const [harmonics, setHarmonics] = useState<HarmonicResult[]>([]);
+  const [h1Warning, setH1Warning] = useState<string | null>(null);
   const [quality, setQuality] = useState<RecordingQuality | null>(null);
   const [spectrumMaxHz, setSpectrumMaxHz] = useState(10000);
   const [savedAnalyses, setSavedAnalyses] = useState<Array<{ id: string; label: string; harmonics: HarmonicResult[] }>>([]);
@@ -120,6 +121,8 @@ function App() {
         : Math.min(nyquistHz, 20000, Math.max(10000, (f0.detectedF0Hz ?? 440) * settings.harmonicCount * 1.1));
       setSpectrumMaxHz(maxHz);
       setSpectrum(avg); setFundamental(f0); setHarmonics(harmonicResults); setQuality(q);
+      const h1 = harmonicResults.find((h) => h.order === 1);
+      setH1Warning(h1?.relativeToH1 === null ? 'H1が検出できないため相対レベルは未計算です。' : null);
       setStatus('ready');
       setMessage('解析完了。');
     } finally { void decodeContext.close(); }
@@ -130,7 +133,7 @@ function App() {
     monitor.stopMonitor();
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) { setStatus('error'); setMessage('録音API未対応'); return; }
     if (audioUrl) { URL.revokeObjectURL(audioUrl); setAudioUrl(null); }
-    setSpectrum([]); setFundamental(null); setHarmonics([]); setQuality(null); setLastBlob(null); setStatus('requestingMic');
+    setSpectrum([]); setFundamental(null); setHarmonics([]); setH1Warning(null); setQuality(null); setLastBlob(null); setStatus('requestingMic');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: {
         channelCount: 1,
@@ -149,7 +152,8 @@ function App() {
       recorder.onstop = async () => {
         const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/mp4' });
         setLastBlob(blob); setAudioUrl(URL.createObjectURL(blob)); cleanupAudioGraph();
-        await runAnalysis(blob);
+        try { await runAnalysis(blob); }
+        catch (error) { console.error(error); setStatus('error'); setMessage('録音は完了しましたが解析に失敗しました。'); }
       };
 
       const delay = Math.max(0, Math.min(settings.maxPreRecordDelaySec, settings.preRecordDelaySec));
@@ -202,6 +206,29 @@ function App() {
     const list = await getAllTakes(); setSavedTakes(list);
   };
 
+  const addToOverlay = () => {
+    if (!harmonics.length) return;
+    const id = `${Date.now()}`;
+    const label = new Date().toLocaleString();
+    const next = [{ id, label, harmonics }, ...savedAnalyses].slice(0, 20);
+    setSavedAnalyses(next);
+    setSelectedIds((prev) => [id, ...prev].slice(0, 10));
+  };
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]));
+  };
+
+  const clearSavedAnalyses = () => {
+    setSavedAnalyses([]);
+    setSelectedIds([]);
+  };
+
+  const removeSavedAnalysis = (id: string) => {
+    setSavedAnalyses((prev) => prev.filter((item) => item.id !== id));
+    setSelectedIds((prev) => prev.filter((v) => v !== id));
+  };
+
   const playTake = (take: SavedTake) => {
     if (selectedTakeAudioUrl) URL.revokeObjectURL(selectedTakeAudioUrl);
     setSelectedTakeAudioUrl(URL.createObjectURL(take.audioBlob));
@@ -214,6 +241,20 @@ function App() {
     if (!selectedTake || !selectedTake.detectedF0Hz) { setHarmonicEqBands([]); return; }
     setHarmonicEqBands(createDefaultHarmonicEqBands(selectedTake.detectedF0Hz, settings.harmonicCount, settings.harmonicEqQ));
   }, [selectedTake, settings.harmonicCount, settings.harmonicEqQ]);
+  useEffect(() => {
+    const raw = window.localStorage.getItem('harmonic_saved_analyses');
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as Array<{ id: string; label: string; harmonics: HarmonicResult[] }>;
+      setSavedAnalyses(parsed);
+    } catch (error) {
+      console.error(error);
+    }
+  }, []);
+  useEffect(() => {
+    window.localStorage.setItem('harmonic_saved_analyses', JSON.stringify(savedAnalyses));
+  }, [savedAnalyses]);
+  useEffect(() => () => { cleanupAudioGraph(); if (audioUrl) URL.revokeObjectURL(audioUrl); }, [audioUrl]);
 
   return (
     <main className="app">
@@ -228,14 +269,32 @@ function App() {
       <SpectrumCanvas data={spectrum} maxFrequencyHz={spectrumMaxHz} harmonicMarkersHz={harmonics.map((h) => ({ order: h.order, expectedFrequencyHz: h.expectedFrequencyHz }))} />
       <FundamentalResultCard result={fundamental} />
       <RecordingQualityCard quality={quality} />
+      {h1Warning ? <p className="warning">{h1Warning}</p> : null}
       <button type="button" className="record-button" onClick={downloadCsv} disabled={harmonics.length === 0}>CSVダウンロード</button>
       <SaveTakeButton disabled={harmonics.length === 0 || !lastBlob} onSave={() => void saveCurrentAnalysis()} />
+      <button type="button" className="record-button" onClick={addToOverlay} disabled={harmonics.length === 0}>比較チャートに追加</button>
       <SavedTakesPanel takes={savedTakes} selectedTakeId={selectedTakeId} onSelect={setSelectedTakeId} onPlay={playTake} onDelete={(id) => { void deleteTake(id).then(async () => setSavedTakes(await getAllTakes())); }} />
       {selectedTakeAudioUrl ? <section className="playback"><h2>選択Take再生</h2><audio controls src={selectedTakeAudioUrl} playsInline /></section> : null}
       {selectedTake && selectedTake.detectedF0Hz && harmonicEqBands.length > 0 ? <HarmonicEqPanel take={selectedTake} bands={harmonicEqBands} minGain={settings.harmonicEqMinGainDb} maxGain={settings.harmonicEqMaxGainDb} isPlaying={eqPlayer.isPlaying} onPlayOriginal={() => void eqPlayer.playOriginal(selectedTake)} onPlayEdited={() => void eqPlayer.playEdited(selectedTake, harmonicEqBands)} onStop={eqPlayer.stop} onReset={() => setHarmonicEqBands(createDefaultHarmonicEqBands(selectedTake.detectedF0Hz ?? 440, settings.harmonicCount, settings.harmonicEqQ))} onChangeGain={(order, gainDb) => setHarmonicEqBands((prev) => updateBandGain(prev, order, gainDb))} /> : null}
       <section className="result-card">
         <h2>保存データ比較</h2>
         <div><label><input type="radio" checked={distributionMode === 'relative'} onChange={() => setDistributionMode('relative')} />相対値</label><label><input type="radio" checked={distributionMode === 'absolute'} onChange={() => setDistributionMode('absolute')} />絶対値</label></div>
+        {savedAnalyses.length > 0 ? (
+          <button type="button" onClick={clearSavedAnalyses}>保存データを全削除</button>
+        ) : null}
+        {savedAnalyses.length === 0 ? <p>保存データはまだありません。</p> : (
+          <div>
+            {savedAnalyses.map((item) => (
+              <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <label style={{ display: 'block', flex: 1 }}>
+                  <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => toggleSelection(item.id)} />
+                  {item.label}
+                </label>
+                <button type="button" onClick={() => removeSavedAnalysis(item.id)}>削除</button>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
       <HarmonicsOverlayChart datasets={overlayDatasets} mode={distributionMode} />
       <HarmonicsBarChart data={harmonics} />
