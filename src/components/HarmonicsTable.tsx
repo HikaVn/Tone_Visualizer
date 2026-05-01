@@ -5,11 +5,11 @@ type Props = { data: HarmonicResult[] };
 export default function HarmonicsTable({ data }: Props) {
   return (
     <section>
-      <h2>Harmonics Detail</h2>
+      <h2>倍音詳細</h2>
       <div className="table-wrap">
         <table>
           <thead>
-            <tr><th>Harmonic</th><th>Expected Hz</th><th>Peak Hz</th><th>Relative</th><th>Level dB</th><th>Confidence</th></tr>
+            <tr><th>倍音</th><th>期待周波数(Hz)</th><th>ピーク周波数(Hz)</th><th>相対値(H1=100)</th><th>レベル(dB)</th><th>信頼度</th></tr>
           </thead>
           <tbody>
             {data.map((h) => (

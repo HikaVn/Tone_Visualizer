@@ -5,7 +5,7 @@ type Props = { data: HarmonicResult[] };
 export default function HarmonicsBarChart({ data }: Props) {
   return (
     <section>
-      <h2>H1〜H20 Relative Level (H1=100)</h2>
+      <h2>H1〜H20 相対レベル (H1=100)</h2>
       <div className="bar-grid">
         {data.map((h) => {
           const value = h.relativeToH1;

@@ -150,7 +150,7 @@ function App() {
   return (
     <main className="app">
       <h1>A4 Harmonic Analyzer</h1>
-      <p className="subtitle">Prototype 1 / Phase 4: 品質評価 + CSV出力</p>
+      <p className="subtitle">Prototype 1 / Phase 4: 品質評価 + CSVダウンロード</p>
       <button className="record-button" type="button" onClick={startRecording} disabled={status === 'recording'}>{status === 'recording' ? `録音中… ${secondsLeft}s` : '録音開始（5秒）'}</button>
       <p className="message">{message}</p>
       <canvas ref={canvasRef} className="wave-canvas" width={900} height={300} aria-label="録音波形キャンバス" />
@@ -160,7 +160,7 @@ function App() {
       <FundamentalResultCard result={fundamental} />
       <RecordingQualityCard quality={quality} />
       {h1Warning ? <p className="warning">{h1Warning}</p> : null}
-      <button type="button" className="record-button" onClick={downloadCsv} disabled={harmonics.length !== 20}>CSV出力</button>
+      <button type="button" className="record-button" onClick={downloadCsv} disabled={harmonics.length !== 20}>CSVダウンロード</button>
       <HarmonicsBarChart data={harmonics} />
       <HarmonicsTable data={harmonics} />
     </main>

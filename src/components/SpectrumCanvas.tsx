@@ -73,7 +73,7 @@ export default function SpectrumCanvas({ data, maxFrequencyHz = 10000, harmonicM
 
   return (
     <section className="spectrum">
-      <h2>平均スペクトル (0–10kHz)</h2>
+      <h2>平均スペクトル（0〜10kHz）</h2>
       <canvas ref={canvasRef} className="spectrum-canvas" width={900} height={300} aria-label="平均スペクトル" />
     </section>
   );
