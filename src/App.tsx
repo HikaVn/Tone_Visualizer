@@ -203,6 +203,7 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem('harmonic_saved_analyses', JSON.stringify(savedAnalyses));
   }, [savedAnalyses]);
+
   useEffect(() => () => { cleanupAudioGraph(); if (audioUrl) URL.revokeObjectURL(audioUrl); }, [audioUrl]);
 
   return (
