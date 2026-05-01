@@ -175,6 +175,16 @@ function App() {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]));
   };
 
+  const clearSavedAnalyses = () => {
+    setSavedAnalyses([]);
+    setSelectedIds([]);
+  };
+
+  const removeSavedAnalysis = (id: string) => {
+    setSavedAnalyses((prev) => prev.filter((item) => item.id !== id));
+    setSelectedIds((prev) => prev.filter((v) => v !== id));
+  };
+
   const overlayDatasets = savedAnalyses
     .filter((a) => selectedIds.includes(a.id))
     .map((a, index) => ({ ...a, color: datasetColor(index) }));
@@ -219,13 +229,19 @@ function App() {
       <button type="button" className="record-button" onClick={saveCurrentAnalysis} disabled={harmonics.length !== 20}>この測定を保存</button>
       <section className="result-card">
         <h2>保存データ比較</h2>
+        {savedAnalyses.length > 0 ? (
+          <button type="button" onClick={clearSavedAnalyses}>保存データを全削除</button>
+        ) : null}
         {savedAnalyses.length === 0 ? <p>保存データはまだありません。</p> : (
           <div>
             {savedAnalyses.map((item) => (
-              <label key={item.id} style={{ display: 'block' }}>
-                <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => toggleSelection(item.id)} />
-                {item.label}
-              </label>
+              <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <label style={{ display: 'block', flex: 1 }}>
+                  <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => toggleSelection(item.id)} />
+                  {item.label}
+                </label>
+                <button type="button" onClick={() => removeSavedAnalysis(item.id)}>削除</button>
+              </div>
             ))}
           </div>
         )}
