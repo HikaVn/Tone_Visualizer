@@ -16,9 +16,9 @@ export default function HarmonicsTable({ data }: Props) {
               <tr key={h.order}>
                 <td>H{h.order}</td>
                 <td>{h.expectedFrequencyHz.toFixed(2)}</td>
-                <td>{h.detectedPeakFrequencyHz?.toFixed(2) ?? '-'}</td>
-                <td>{h.relativeToH1?.toFixed(2) ?? '-'}</td>
-                <td>{h.levelDb?.toFixed(2) ?? '-'}</td>
+                <td>{h.outOfRange ? '範囲外' : (h.detectedPeakFrequencyHz?.toFixed(2) ?? '-')}</td>
+                <td>{h.outOfRange ? '範囲外' : (h.relativeToH1?.toFixed(2) ?? '-')}</td>
+                <td>{h.outOfRange ? '範囲外' : (h.levelDb?.toFixed(2) ?? '-')}</td>
                 <td>{h.confidence}</td>
               </tr>
             ))}
