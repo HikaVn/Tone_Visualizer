@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { analyzeHarmonics, type HarmonicResult } from './audio/harmonics';
 import { sliceBySeconds } from './audio/audioMetrics';
 import { computeAverageSpectrum, type SpectrumPoint } from './audio/fft';
-import { detectFundamentalFromSpectrum, type FundamentalResult } from './audio/pitch';
+import { detectFundamentalAutocorrelation, type FundamentalResult } from './audio/pitch';
 import { estimateRecordingQuality, type RecordingQuality } from './audio/quality';
 import FundamentalResultCard from './components/FundamentalResultCard';
 import HarmonicsBarChart from './components/HarmonicsBarChart';
@@ -30,6 +30,7 @@ function App() {
   const [harmonics, setHarmonics] = useState<HarmonicResult[]>([]);
   const [h1Warning, setH1Warning] = useState<string | null>(null);
   const [quality, setQuality] = useState<RecordingQuality | null>(null);
+  const [spectrumMaxHz, setSpectrumMaxHz] = useState(10000);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafIdRef = useRef<number | null>(null);
@@ -76,8 +77,11 @@ function App() {
       const section = sliceBySeconds(mono, audioBuffer.sampleRate, ANALYSIS_START_SEC, ANALYSIS_END_SEC);
       const avg = computeAverageSpectrum(section, audioBuffer.sampleRate);
       const q = estimateRecordingQuality(section);
-      const f0 = detectFundamentalFromSpectrum(avg);
-      const harmonicResults = analyzeHarmonics(avg, f0.detectedF0Hz);
+      const f0 = detectFundamentalAutocorrelation(section, audioBuffer.sampleRate);
+      const nyquistHz = audioBuffer.sampleRate / 2;
+      const harmonicResults = analyzeHarmonics(avg, f0.detectedF0Hz, nyquistHz);
+      const maxHz = Math.min(nyquistHz, 20000, Math.max(10000, (f0.detectedF0Hz ?? 440) * 20 * 1.1));
+      setSpectrumMaxHz(maxHz);
       setSpectrum(avg); setFundamental(f0); setHarmonics(harmonicResults); setQuality(q);
       const h1 = harmonicResults.find((h) => h.order === 1);
       setH1Warning(h1?.relativeToH1 === null ? 'H1が検出できないため相対レベルは未計算です。' : null);
@@ -88,7 +92,7 @@ function App() {
     if (status === 'recording') return;
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) { setStatus('error'); setMessage('このブラウザは録音APIに対応していません。'); return; }
     if (audioUrl) { URL.revokeObjectURL(audioUrl); setAudioUrl(null); }
-    setSpectrum([]); setFundamental(null); setHarmonics([]); setH1Warning(null); setQuality(null);
+    setSpectrum([]); setFundamental(null); setHarmonics([]); setH1Warning(null); setQuality(null); setSpectrumMaxHz(10000);
     try {
       setStatus('recording'); setSecondsLeft(RECORD_SECONDS); setMessage('録音中です。A4ロングトーンを維持してください。');
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
@@ -125,7 +129,7 @@ function App() {
       'peak_dbfs',
     ];
 
-    const rows = harmonics.map((h) => [
+    const rows: Array<Array<string | number>> = harmonics.map((h) => [
       h.order,
       h.expectedFrequencyHz.toFixed(4),
       h.detectedPeakFrequencyHz?.toFixed(4) ?? '',
@@ -136,7 +140,7 @@ function App() {
       quality?.peakDbfs.toFixed(4) ?? '',
     ]);
 
-    const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const csv = [headers.join(','), ...rows.map((r: Array<string | number>) => r.join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -149,18 +153,25 @@ function App() {
 
   return (
     <main className="app">
-      <h1>A4 Harmonic Analyzer</h1>
-      <p className="subtitle">Prototype 1 / Phase 4: 品質評価 + CSV出力</p>
+      <h1>Violin Harmonic Analyzer</h1>
+      <p className="subtitle">Prototype 1 / Phase 4: 品質評価 + CSVダウンロード</p>
       <button className="record-button" type="button" onClick={startRecording} disabled={status === 'recording'}>{status === 'recording' ? `録音中… ${secondsLeft}s` : '録音開始（5秒）'}</button>
       <p className="message">{message}</p>
+      <section className="result-card">
+        <h2>測定条件</h2>
+        <p>Auto f0 detection</p>
+        <p>Duration: 5 sec</p>
+        <p>Recommended: no vibrato</p>
+      </section>
+
       <canvas ref={canvasRef} className="wave-canvas" width={900} height={300} aria-label="録音波形キャンバス" />
       <section className="playback"><h2>録音再生</h2>{audioUrl ? <audio controls src={audioUrl} playsInline /> : <p>録音後に再生プレイヤーが表示されます。</p>}</section>
 
-      <SpectrumCanvas data={spectrum} harmonicMarkersHz={harmonics.map((h) => ({ order: h.order, expectedFrequencyHz: h.expectedFrequencyHz }))} />
+      <SpectrumCanvas data={spectrum} maxFrequencyHz={spectrumMaxHz} harmonicMarkersHz={harmonics.map((h) => ({ order: h.order, expectedFrequencyHz: h.expectedFrequencyHz }))} />
       <FundamentalResultCard result={fundamental} />
       <RecordingQualityCard quality={quality} />
       {h1Warning ? <p className="warning">{h1Warning}</p> : null}
-      <button type="button" className="record-button" onClick={downloadCsv} disabled={harmonics.length !== 20}>CSV出力</button>
+      <button type="button" className="record-button" onClick={downloadCsv} disabled={harmonics.length !== 20}>CSVダウンロード</button>
       <HarmonicsBarChart data={harmonics} />
       <HarmonicsTable data={harmonics} />
     </main>

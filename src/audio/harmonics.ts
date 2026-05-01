@@ -1,6 +1,6 @@
 import type { SpectrumPoint } from './fft';
 
-export type HarmonicConfidence = 'High' | 'Medium' | 'Low';
+export type HarmonicConfidence = 'High' | 'Medium' | 'Low' | 'OutOfRange';
 
 export type HarmonicResult = {
   order: number;
@@ -10,6 +10,7 @@ export type HarmonicResult = {
   levelDb: number | null;
   relativeToH1: number | null;
   confidence: HarmonicConfidence;
+  outOfRange: boolean;
 };
 
 const confidenceFromDb = (levelDb: number | null): HarmonicConfidence => {
@@ -19,34 +20,27 @@ const confidenceFromDb = (levelDb: number | null): HarmonicConfidence => {
   return 'Low';
 };
 
-export const analyzeHarmonics = (spectrum: SpectrumPoint[], f0: number | null): HarmonicResult[] => {
+export const analyzeHarmonics = (spectrum: SpectrumPoint[], f0: number | null, nyquistHz: number): HarmonicResult[] => {
   const results: HarmonicResult[] = [];
   if (!f0) {
     for (let n = 1; n <= 20; n += 1) {
-      results.push({
-        order: n,
-        expectedFrequencyHz: n * 440,
-        detectedPeakFrequencyHz: null,
-        level: null,
-        levelDb: null,
-        relativeToH1: null,
-        confidence: 'Low',
-      });
+      results.push({ order: n, expectedFrequencyHz: 0, detectedPeakFrequencyHz: null, level: null, levelDb: null, relativeToH1: null, confidence: 'Low', outOfRange: false });
     }
     return results;
   }
 
   for (let n = 1; n <= 20; n += 1) {
     const expectedFrequencyHz = n * f0;
-    const tol = expectedFrequencyHz * 0.015;
-    const minHz = expectedFrequencyHz - tol;
-    const maxHz = expectedFrequencyHz + tol;
-    const candidates = spectrum.filter((p) => p.frequencyHz >= minHz && p.frequencyHz <= maxHz);
-
-    let peak: SpectrumPoint | null = null;
-    for (let i = 0; i < candidates.length; i += 1) {
-      if (!peak || candidates[i].magnitude > peak.magnitude) peak = candidates[i];
+    const outOfRange = expectedFrequencyHz > nyquistHz;
+    if (outOfRange) {
+      results.push({ order: n, expectedFrequencyHz, detectedPeakFrequencyHz: null, level: null, levelDb: null, relativeToH1: null, confidence: 'OutOfRange', outOfRange: true });
+      continue;
     }
+
+    const tol = expectedFrequencyHz * 0.015;
+    const candidates = spectrum.filter((p) => p.frequencyHz >= expectedFrequencyHz - tol && p.frequencyHz <= expectedFrequencyHz + tol);
+    let peak: SpectrumPoint | null = null;
+    for (let i = 0; i < candidates.length; i += 1) if (!peak || candidates[i].magnitude > peak.magnitude) peak = candidates[i];
 
     results.push({
       order: n,
@@ -56,17 +50,16 @@ export const analyzeHarmonics = (spectrum: SpectrumPoint[], f0: number | null): 
       levelDb: peak?.magnitudeDb ?? null,
       relativeToH1: null,
       confidence: confidenceFromDb(peak?.magnitudeDb ?? null),
+      outOfRange: false,
     });
   }
 
-  const h1 = results.find((r) => r.order === 1);
-  const h1Level = h1?.level ?? null;
+  const h1Level = results.find((r) => r.order === 1)?.level ?? null;
   if (h1Level && h1Level > 0) {
     results.forEach((r) => {
-      r.relativeToH1 = r.level !== null ? (r.level / h1Level) * 100 : null;
+      if (!r.outOfRange) r.relativeToH1 = r.level !== null ? (r.level / h1Level) * 100 : null;
       if (r.order === 1 && r.relativeToH1 !== null) r.relativeToH1 = 100;
     });
   }
-
   return results;
 };
