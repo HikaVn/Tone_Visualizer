@@ -4,9 +4,65 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>A4 Harmonic Analyzer</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        background: #020617;
+        color: #e2e8f0;
+      }
+
+      body {
+        margin: 0;
+        background: #020617;
+      }
+
+      .boot-message {
+        max-width: 720px;
+        margin: 0 auto;
+        min-height: 100svh;
+        padding: 24px;
+      }
+
+      .boot-message h1 {
+        margin: 0 0 12px;
+        font-size: clamp(1.5rem, 5vw, 2rem);
+      }
+
+      .boot-message p {
+        line-height: 1.6;
+      }
+
+      .boot-message code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <main class="boot-message">
+        <h1>A4 Harmonic Analyzer</h1>
+        <p>アプリを読み込んでいます。</p>
+      </main>
+    </div>
+    <script>
+      const isGitHubPages = window.location.hostname.endsWith('github.io');
+      const isSourceIndex = Boolean(document.querySelector('script[src="/src/main.tsx"]'));
+
+      if (isGitHubPages && isSourceIndex) {
+        const root = document.getElementById('root');
+
+        if (root) {
+          root.innerHTML = [
+            '<main class="boot-message">',
+            '<h1>GitHub Pages の配備設定が不整合です</h1>',
+            '<p>このページはソースの <code>index.html</code> をそのまま配信しているため、<code>/src/main.tsx</code> が 404 になり、アプリを起動できません。</p>',
+            '<p>GitHub Pages の Source を <code>GitHub Actions</code> に切り替えて、このリポジトリの deploy workflow で <code>dist</code> を配備してください。</p>',
+            '</main>',
+          ].join('');
+        }
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
