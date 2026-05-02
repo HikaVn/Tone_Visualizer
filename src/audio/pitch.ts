@@ -3,6 +3,7 @@ export type FundamentalResult = {
   estimatedNote: string | null;
   pitchDeviationCent: number | null;
   analysisRangeLabel: string;
+  referenceA4Hz: number;
 };
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -12,9 +13,10 @@ export const detectFundamentalAutocorrelation = (
   sampleRate: number,
   minHz = 150,
   maxHz = 1000,
+  referenceA4Hz = 440,
 ): FundamentalResult => {
   if (samples.length < 2 || sampleRate <= 0) {
-    return { detectedF0Hz: null, estimatedNote: null, pitchDeviationCent: null, analysisRangeLabel: '1.0s - 4.0s' };
+    return { detectedF0Hz: null, estimatedNote: null, pitchDeviationCent: null, analysisRangeLabel: '1.0s - 4.0s', referenceA4Hz };
   }
 
   const minLag = Math.max(1, Math.floor(sampleRate / maxHz));
@@ -35,14 +37,14 @@ export const detectFundamentalAutocorrelation = (
   }
 
   if (bestLag <= 0 || bestCorr <= 0) {
-    return { detectedF0Hz: null, estimatedNote: null, pitchDeviationCent: null, analysisRangeLabel: '1.0s - 4.0s' };
+    return { detectedF0Hz: null, estimatedNote: null, pitchDeviationCent: null, analysisRangeLabel: '1.0s - 4.0s', referenceA4Hz };
   }
 
   const detectedF0Hz = sampleRate / bestLag;
-  const midi = Math.round(69 + 12 * Math.log2(detectedF0Hz / 440));
-  const refHz = 440 * 2 ** ((midi - 69) / 12);
-  const pitchDeviationCent = 1200 * Math.log2(detectedF0Hz / refHz);
+  const midiNote = 69 + 12 * Math.log2(detectedF0Hz / referenceA4Hz);
+  const midi = Math.round(midiNote);
+  const pitchDeviationCent = (midiNote - midi) * 100;
   const estimatedNote = `${NOTE_NAMES[((midi % 12) + 12) % 12]}${Math.floor(midi / 12) - 1}`;
 
-  return { detectedF0Hz, estimatedNote, pitchDeviationCent, analysisRangeLabel: '1.0s - 4.0s' };
+  return { detectedF0Hz, estimatedNote, pitchDeviationCent, analysisRangeLabel: '1.0s - 4.0s', referenceA4Hz };
 };
