@@ -1,15 +1,31 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { HarmonicEqBand } from '../types/harmonicEq';
 import type { SavedTake } from '../types/take';
 
-export function useHarmonicEqPlayer() {
+export function useHarmonicEqPlayer(bands: HarmonicEqBand[]) {
   const [isPlaying, setIsPlaying] = useState(false);
   const ctxRef = useRef<AudioContext | null>(null);
   const srcRef = useRef<AudioBufferSourceNode | null>(null);
+  const filtersRef = useRef<BiquadFilterNode[]>([]);
+
+  const applyBandsToFilters = useCallback((nextBands: HarmonicEqBand[]) => {
+    const ctx = ctxRef.current;
+    if (!ctx) return;
+    filtersRef.current.forEach((filter, index) => {
+      const band = nextBands[index];
+      if (!band) return;
+      const time = ctx.currentTime;
+      filter.frequency.setTargetAtTime(band.frequencyHz, time, 0.01);
+      filter.Q.setTargetAtTime(band.q, time, 0.01);
+      filter.gain.setTargetAtTime(band.gainDb, time, 0.01);
+    });
+  }, []);
 
   const stop = useCallback(() => {
     try { srcRef.current?.stop(); } catch {}
     srcRef.current?.disconnect(); srcRef.current = null;
+    filtersRef.current.forEach((filter) => filter.disconnect());
+    filtersRef.current = [];
     setIsPlaying(false);
   }, []);
 
@@ -22,7 +38,7 @@ export function useHarmonicEqPlayer() {
     const src = ctx.createBufferSource(); src.buffer = buf; src.connect(ctx.destination); src.onended = () => setIsPlaying(false); src.start(); srcRef.current = src; setIsPlaying(true);
   }, [stop]);
 
-  const playEdited = useCallback(async (take: SavedTake, bands: HarmonicEqBand[]) => {
+  const playEdited = useCallback(async (take: SavedTake) => {
     stop();
     const Ctx = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctx) return;
@@ -30,12 +46,18 @@ export function useHarmonicEqPlayer() {
     const buf = await ctx.decodeAudioData(await take.audioBlob.arrayBuffer());
     const src = ctx.createBufferSource(); src.buffer = buf;
     let node: AudioNode = src;
+    const filters: BiquadFilterNode[] = [];
     bands.forEach((b) => {
       const f = ctx.createBiquadFilter(); f.type = 'peaking'; f.frequency.value = b.frequencyHz; f.Q.value = b.q; f.gain.value = b.gainDb;
-      node.connect(f); node = f;
+      node.connect(f); node = f; filters.push(f);
     });
+    filtersRef.current = filters;
     node.connect(ctx.destination); src.onended = () => setIsPlaying(false); src.start(); srcRef.current = src; setIsPlaying(true);
-  }, [stop]);
+  }, [bands, stop]);
+
+  useEffect(() => {
+    applyBandsToFilters(bands);
+  }, [applyBandsToFilters, bands]);
 
   return { isPlaying, playOriginal, playEdited, stop };
 }

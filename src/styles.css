@@ -81,6 +81,19 @@ audio {
 
 .warning { color: #fbbf24; }
 
+.diagnostics-grid {
+  display: grid;
+  grid-template-columns: minmax(110px, max-content) minmax(0, 1fr);
+  gap: 0.45rem 0.75rem;
+  margin: 0.75rem 0;
+  align-items: start;
+}
+
+.diagnostics-grid code {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .bar-grid {
   display: grid;
   grid-template-columns: repeat(10, minmax(0, 1fr));

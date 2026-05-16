@@ -17,6 +17,7 @@ import { useLiveMonitor } from './hooks/useLiveMonitor';
 import LiveMonitorPanel from './components/LiveMonitorPanel';
 import SaveTakeButton from './components/SaveTakeButton';
 import SavedTakesPanel from './components/SavedTakesPanel';
+import StorageDiagnosticsPanel from './components/StorageDiagnosticsPanel';
 import type { SavedTake } from './types/take';
 import { deleteTake, getAllTakes, saveTake } from './storage/takeStorage';
 import type { HarmonicEqBand } from './types/harmonicEq';
@@ -60,7 +61,7 @@ function App() {
     autoGainControl: settings.autoGainControlRequestedOff ? false : undefined,
     channelCount: 1,
   });
-  const eqPlayer = useHarmonicEqPlayer();
+  const eqPlayer = useHarmonicEqPlayer(harmonicEqBands);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafIdRef = useRef<number | null>(null);
@@ -273,9 +274,10 @@ function App() {
       <button type="button" className="record-button" onClick={downloadCsv} disabled={harmonics.length === 0}>CSVダウンロード</button>
       <SaveTakeButton disabled={harmonics.length === 0 || !lastBlob} onSave={() => void saveCurrentAnalysis()} />
       <button type="button" className="record-button" onClick={addToOverlay} disabled={harmonics.length === 0}>比較チャートに追加</button>
+      <StorageDiagnosticsPanel />
       <SavedTakesPanel takes={savedTakes} selectedTakeId={selectedTakeId} onSelect={setSelectedTakeId} onPlay={playTake} onDelete={(id) => { void deleteTake(id).then(async () => setSavedTakes(await getAllTakes())); }} />
       {selectedTakeAudioUrl ? <section className="playback"><h2>選択Take再生</h2><audio controls src={selectedTakeAudioUrl} playsInline /></section> : null}
-      {selectedTake && selectedTake.detectedF0Hz && harmonicEqBands.length > 0 ? <HarmonicEqPanel take={selectedTake} bands={harmonicEqBands} minGain={settings.harmonicEqMinGainDb} maxGain={settings.harmonicEqMaxGainDb} isPlaying={eqPlayer.isPlaying} onPlayOriginal={() => void eqPlayer.playOriginal(selectedTake)} onPlayEdited={() => void eqPlayer.playEdited(selectedTake, harmonicEqBands)} onStop={eqPlayer.stop} onReset={() => setHarmonicEqBands(createDefaultHarmonicEqBands(selectedTake.detectedF0Hz ?? 440, settings.harmonicCount, settings.harmonicEqQ))} onChangeGain={(order, gainDb) => setHarmonicEqBands((prev) => updateBandGain(prev, order, gainDb))} /> : null}
+      {selectedTake && selectedTake.detectedF0Hz && harmonicEqBands.length > 0 ? <HarmonicEqPanel take={selectedTake} bands={harmonicEqBands} minGain={settings.harmonicEqMinGainDb} maxGain={settings.harmonicEqMaxGainDb} isPlaying={eqPlayer.isPlaying} onPlayOriginal={() => void eqPlayer.playOriginal(selectedTake)} onPlayEdited={() => void eqPlayer.playEdited(selectedTake)} onStop={eqPlayer.stop} onReset={() => setHarmonicEqBands(createDefaultHarmonicEqBands(selectedTake.detectedF0Hz ?? 440, settings.harmonicCount, settings.harmonicEqQ))} onChangeGain={(order, gainDb) => setHarmonicEqBands((prev) => updateBandGain(prev, order, gainDb))} /> : null}
       <section className="result-card">
         <h2>保存データ比較</h2>
         <div><label><input type="radio" checked={distributionMode === 'relative'} onChange={() => setDistributionMode('relative')} />相対値</label><label><input type="radio" checked={distributionMode === 'absolute'} onChange={() => setDistributionMode('absolute')} />絶対値</label></div>
